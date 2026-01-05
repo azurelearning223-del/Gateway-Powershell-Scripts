@@ -1,73 +1,69 @@
+# ================================
+# Azure VM Software Install Script
+# ================================
+
+# Force TLS 1.2 (critical for downloads)
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+
+$ErrorActionPreference = "Stop"
+
+$TempPath = "C:\Temp"
+$LogPath  = "C:\InstallLogs"
+
+New-Item -ItemType Directory -Path $TempPath -Force | Out-Null
+New-Item -ItemType Directory -Path $LogPath  -Force | Out-Null
+
 $Packages = @(
     @{
         Name       = "7Zip"
-        Type       = "msi"
+        Type       = "exe"
         Source     = "https://www.7-zip.org/a/7z2501-x64.exe"
-        SilentArgs = "/qn"
+        SilentArgs = "/S"
+        VerifyPath = "C:\Program Files\7-Zip\7z.exe"
     },
     @{
         Name       = "GoogleChrome"
         Type       = "exe"
-        Source     = "https://dl.google.com/chrome/install/375.126/chrome_installer.exe"
-        SilentArgs = "/silent /install"
+        Source     = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
+        SilentArgs = "/silent /install /norestart"
+        VerifyPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
     }
 )
-
-param (
-    [Parameter(Mandatory = $true)]
-    [array]$Packages
-)
-
-$ErrorActionPreference = "Stop"
-$LogPath = "C:\InstallLogs"
-New-Item -ItemType Directory -Path $LogPath -Force | Out-Null
 
 function Install-Package {
     param (
         [string]$Name,
-        [string]$Type,          # msi | exe | zip
-        [string]$Source,        # URL or local path
-        [string]$SilentArgs,    # For exe/msi
-        [string]$InstallPath    # For zip extraction
+        [string]$Type,
+        [string]$Source,
+        [string]$SilentArgs,
+        [string]$VerifyPath
     )
 
     Write-Host "🔹 Installing $Name..."
 
-    $fileName = Split-Path $Source -Leaf
-    $localPath = "C:\Temp\$fileName"
-    New-Item -ItemType Directory -Path "C:\Temp" -Force | Out-Null
+    $fileName  = Split-Path $Source -Leaf
+    $localPath = Join-Path $TempPath $fileName
 
-    if ($Source -match "^https?://") {
-        Write-Host "⬇ Downloading $Name..."
-        Invoke-WebRequest -Uri $Source -OutFile $localPath -UseBasicParsing
-    } else {
-        $localPath = $Source
+    Write-Host "⬇ Downloading $Name..."
+    Invoke-WebRequest -Uri $Source -OutFile $localPath -UseBasicParsing
+
+    if ($Type -eq "exe") {
+        $process = Start-Process $localPath `
+            -ArgumentList $SilentArgs `
+            -Wait `
+            -PassThru `
+            -NoNewWindow
+
+        if ($process.ExitCode -ne 0) {
+            throw "$Name installation failed with exit code $($process.ExitCode)"
+        }
+    }
+    else {
+        throw "Unsupported installer type: $Type"
     }
 
-    switch ($Type.ToLower()) {
-
-        "msi" {
-            Start-Process msiexec.exe `
-                -ArgumentList "/i `"$localPath`" $SilentArgs /norestart /log `"$LogPath\$Name.log`"" `
-                -Wait -NoNewWindow
-        }
-
-        "exe" {
-            Start-Process $localPath `
-                -ArgumentList $SilentArgs `
-                -Wait -NoNewWindow
-        }
-
-        "zip" {
-            if (-not $InstallPath) {
-                throw "InstallPath is required for ZIP packages"
-            }
-            Expand-Archive -Path $localPath -DestinationPath $InstallPath -Force
-        }
-
-        default {
-            throw "Unsupported package type: $Type"
-        }
+    if (-not (Test-Path $VerifyPath)) {
+        throw "$Name verification failed. File not found: $VerifyPath"
     }
 
     Write-Host "✅ $Name installed successfully"
@@ -77,5 +73,4 @@ foreach ($pkg in $Packages) {
     Install-Package @pkg
 }
 
-Write-Host "🎉 All packages installed"
-
+Write-Host "🎉 All software installed successfully"
