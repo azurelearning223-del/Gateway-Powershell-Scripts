@@ -7,22 +7,29 @@ $ErrorActionPreference = "Stop"
 
 $TempPath = "C:\Temp"
 $LogPath  = "C:\InstallLogs"
+$LogFile  = "$LogPath\install.log"
 
 New-Item -ItemType Directory -Path $TempPath -Force | Out-Null
 New-Item -ItemType Directory -Path $LogPath  -Force | Out-Null
+Start-Transcript -Path $LogFile -Append
 
 $Packages = @(
     @{
         Name       = "7Zip"
         Source     = "https://www.7-zip.org/a/7z2501-x64.exe"
         SilentArgs = "/S"
-        VerifyPath = "C:\Program Files\7-Zip\7z.exe"
+        VerifyPath = @("C:\Program Files\7-Zip\7z.exe")
+        IgnoreExitCode = $false
     },
     @{
         Name       = "GoogleChrome"
         Source     = "https://dl.google.com/chrome/install/latest/chrome_installer.exe"
         SilentArgs = "/silent /install /norestart"
-        VerifyPath = "C:\Program Files\Google\Chrome\Application\chrome.exe"
+        VerifyPath = @(
+            "C:\Program Files\Google\Chrome\Application\chrome.exe",
+            "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"
+        )
+        IgnoreExitCode = $true
     }
 )
 
@@ -31,7 +38,8 @@ function Install-Package {
         [string]$Name,
         [string]$Source,
         [string]$SilentArgs,
-        [string]$VerifyPath
+        [array] $VerifyPath,
+        [bool]  $IgnoreExitCode
     )
 
     Write-Host "Installing $Name..."
@@ -48,12 +56,23 @@ function Install-Package {
         -PassThru `
         -NoNewWindow
 
-    if ($process.ExitCode -ne 0) {
+    if (-not $IgnoreExitCode -and $process.ExitCode -ne 0) {
         throw "$Name installation failed with exit code $($process.ExitCode)"
     }
 
-    if (-not (Test-Path $VerifyPath)) {
-        throw "$Name verification failed. File not found: $VerifyPath"
+    # Chrome installs asynchronously — wait
+    Start-Sleep -Seconds 15
+
+    $found = $false
+    foreach ($path in $VerifyPath) {
+        if (Test-Path $path) {
+            $found = $true
+            break
+        }
+    }
+
+    if (-not $found) {
+        throw "$Name verification failed. Executable not found."
     }
 
     Write-Host "$Name installed successfully"
@@ -64,3 +83,4 @@ foreach ($pkg in $Packages) {
 }
 
 Write-Host "All software installed successfully"
+Stop-Transcript
