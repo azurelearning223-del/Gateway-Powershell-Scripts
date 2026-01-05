@@ -1,3 +1,18 @@
+$Packages = @(
+    @{
+        Name       = "7Zip"
+        Type       = "msi"
+        Source     = "https://www.7-zip.org/a/7z2501-x64.exe"
+        SilentArgs = "/qn"
+    },
+    @{
+        Name       = "GoogleChrome"
+        Type       = "exe"
+        Source     = "https://dl.google.com/chrome/install/375.126/chrome_installer.exe"
+        SilentArgs = "/silent /install"
+    }
+)
+
 param (
     [Parameter(Mandatory = $true)]
     [array]$Packages
@@ -63,3 +78,4 @@ foreach ($pkg in $Packages) {
 }
 
 Write-Host "🎉 All packages installed"
+
